@@ -67,8 +67,8 @@ DEST=$DEST/twic.pgn         # archivo con todos los archivos pgn
 if [ ! -f ./last ]; then OLDEST=920; else OLDEST=`cat ./last`; fi
 
 # determinar la ultima publicacion en https://www.theweekinchess.com
-# NEWEST=`curl -s https://www.theweekinchess.com/twic/ | grep -m 1 g\.zip | sed 's/^.*twic//' | sed 's/g\.zip.*//'`
-NEWEST=925
+NEWEST=`curl -s https://www.theweekinchess.com/twic/ | grep -m 1 g\.zip | sed 's/^.*twic//' | sed 's/g\.zip.*//'`
+# NEWEST=925
 
 for WEEK_NUM in `seq $OLDEST $NEWEST`
 do
