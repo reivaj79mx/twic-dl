@@ -1,0 +1,116 @@
+#!/bin/bash
+
+usage()
+{
+  echo
+    echo "Usage: twic-dl [ -d | --delete]"
+    echo "               [ -h | --help] dest"
+    echo "               dest                 Carpeta de destino"
+    echo "               -h, --help           Mostrar la ayuda del comando"
+    echo "               -d, --delete         Eliminar los archivos PGN descargados"
+
+  exit 2
+}
+
+# parsear los argumentos de opcion
+ARGS=`getopt -q -n twic-dl -o dh -l delete,help -- "$@"`
+if [ "$?" != "0" ]; then usage; fi
+
+eval set -- "$ARGS"
+
+DELETE_PGNS=0
+
+while : 
+do
+  case "$1" in
+    -d | --delete)
+      DELETE_PGNS=1
+      shift
+      ;;
+    -h | --help)
+      usage
+      break
+      ;;
+    --)
+      shift
+      break
+      ;;
+  esac
+done
+
+# solo se permite el parametro de destino a parte de las opciones
+PARAMS=($@)
+if [ ${#PARAMS[@]} != 1 ]; then 
+  usage
+  exit 1
+else
+  if [[ -d "${PARAMS[0]}" ]]; then 
+    DEST="${PARAMS[0]}"
+  else
+    echo -e "\e[0;31mERROR:\e[0m \"$1\" no es un directorio."
+    exit 1
+  fi
+fi
+
+echo
+
+# directorios de trabajo
+PGN=$DEST/pgn              # directorio donde se almacenan los archivos pgn
+TMP=$DEST/tmp               # directorio donde se almacenan los archivos zip
+DEST=$DEST/twic.pgn         # archivo con todos los archivos pgn
+
+# crear directorios de trabajo
+[[ ! -d $TMP ]] && mkdir $TMP
+[[ ! -d $PGN ]] && mkdir $PGN
+
+# determinar la ultima publicacion descargada (por default 920)
+if [ ! -f ./last ]; then OLDEST=920; else OLDEST=`cat ./last`; fi
+
+# determinar la ultima publicacion en https://www.theweekinchess.com
+# NEWEST=`curl -s https://www.theweekinchess.com/twic/ | grep -m 1 g\.zip | sed 's/^.*twic//' | sed 's/g\.zip.*//'`
+NEWEST=925
+
+for WEEK_NUM in `seq $OLDEST $NEWEST`
+do
+    # verificar disponibilidad del paquete
+    PAQ="https://www.theweekinchess.com/zips/twic"$WEEK_NUM"g.zip"
+    RESULT=`curl -Is $PAQ`
+    STATUS=`echo "$RESULT" | grep HTTP/2 | sed 's/HTTP\/2 //'`
+    LENGTH=`echo "$RESULT" | grep 'content-length:' | sed 's/content-length: //'`
+
+    echo -n -e "PGN: \e[0;35mtwic"$WEEK_NUM"g.zip\e[0m"
+    
+    # descargando PGNs
+    if [[ "$STATUS" = *"200"* ]]; then
+
+        echo -n -e "\e[0;34m`expr $LENGTH | awk '{ printf "%10.2f\n", ($1 / 1024) / 1024 }'`M\e[0m\t"
+
+        # descargado
+        curl -s -o $TMP/twic$WEEK_NUM.zip $PAQ
+        echo -n "dl: "
+        echo -n -e "\e[0;32m`echo | awk '{ printf "%-12s", "done!"}'`\e[0m"
+
+        # descomprimiendo
+        unzip -qo $TMP/twic$WEEK_NUM.zip -d $PGN
+        echo -n "uzip: "
+        echo -e "\e[0;32m`echo | awk '{ printf "%-10s", "done!"}'`\e[0m"
+
+        # guardar el ultimo paquete en el archivo last
+        echo $(($WEEK_NUM + 1)) > ./last
+    else
+        echo -n -e "\e[0;34m`expr 0 | awk '{ printf "%10.2f\n", ($1 / 1024) / 1024 }'`M\e[0m\t"
+        echo -n "dl: "
+        echo -e "\e[0;31m`echo | awk '{ printf "%-12s", "not found!"}'`\e[0m"
+
+    fi
+done
+
+# se agregan los pgn descargados a un solo archivo
+[[ -f ./twic.pgn ]] && rm ./twic.pgn                      # primero se elimina por completo
+[[ -d $PGN ]] && cat $PGN/*.pgn > $DEST                   # se agregan todos los pgn al archivo global
+
+# eliminar archivos PGN 
+[[ "$DELETE_PGNS" = "1" ]] && rm -r $PGN                  # eliminar los archivos PGN (opcion -d | --delete)
+
+# eliminar la carpeta temporal
+rm -rf $TMP                                               # se elimina la carpeta temporal
